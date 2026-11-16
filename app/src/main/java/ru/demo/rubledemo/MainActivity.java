@@ -332,7 +332,7 @@ public class MainActivity extends Activity {
         if (animate) fadeIn();
     }
 
-    private void processPayment(View tapTarget) {
+    private void processPayment(TextView tapTarget) {
         if (paymentAttempted) return;
         paymentAttempted = true;
         tapTarget.animate().scaleX(0.82f).scaleY(0.82f).alpha(0.7f).setDuration(120)
