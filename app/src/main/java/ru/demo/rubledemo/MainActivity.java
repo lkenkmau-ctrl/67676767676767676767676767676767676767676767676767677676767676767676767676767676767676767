@@ -1,294 +1,551 @@
 package ru.demo.rubledemo;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
-import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
-import android.view.inputmethod.InputMethodManager;
-import android.content.Context;
-import android.widget.Button;
-import android.widget.EditText;
+import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import java.text.NumberFormat;
 import java.util.Locale;
+import java.util.Random;
 
 public class MainActivity extends Activity {
     private static final String PREFS = "wallet_demo";
     private static final String BALANCE_KEY = "balance";
-    private static final int INK = Color.rgb(29, 39, 69);
-    private static final int MUTED = Color.rgb(130, 140, 159);
-    private static final int PURPLE = Color.rgb(112, 91, 235);
-    private static final int GREEN = Color.rgb(31, 163, 113);
-    private static final int RED = Color.rgb(214, 78, 91);
+
+    private static final int BG = Color.rgb(17, 18, 21);
+    private static final int SURFACE = Color.rgb(29, 30, 34);
+    private static final int SURFACE_LIGHT = Color.rgb(39, 40, 45);
+    private static final int ORANGE = Color.rgb(255, 143, 45);
+    private static final int WHITE = Color.rgb(247, 247, 245);
+    private static final int MUTED = Color.rgb(151, 151, 157);
+    private static final int GREEN = Color.rgb(70, 207, 144);
+    private static final int RED = Color.rgb(255, 100, 100);
+
+    private static final int HOME = 0;
+    private static final int USER = 1;
+    private static final int SELLER_ENTRY = 2;
+    private static final int PAYMENT = 3;
+    private static final int RESULT = 4;
 
     private long balance;
-    private int currentMode = 0;
-    private EditText userAmount;
-    private EditText sellerAmount;
-    private TextView balanceValue;
-    private TextView resultMessage;
-    private LinearLayout content;
-    private LinearLayout tabUser;
-    private LinearLayout tabSeller;
-    private TextView userTabText;
-    private TextView sellerTabText;
-    private boolean paymentFinished;
-    private boolean paymentStarted;
     private long pendingPaymentAmount;
+    private String amountDigits = "";
+    private boolean addingFunds = true;
+    private int screen = HOME;
+    private LinearLayout root;
+    private TextView amountView;
+    private TextView balanceView;
+    private TextView userNotice;
+    private TextView operationAdd;
+    private TextView operationSubtract;
+    private boolean paymentAttempted;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setStatusBarColor(Color.rgb(245, 246, 250));
-        getWindow().setNavigationBarColor(Color.WHITE);
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+        getWindow().setStatusBarColor(BG);
+        getWindow().setNavigationBarColor(BG);
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        applyImmersiveMode();
+
         balance = getSharedPreferences(PREFS, MODE_PRIVATE).getLong(BALANCE_KEY, 2500L);
-        buildScreen();
-        showMode(0);
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(BG);
+        setContentView(root);
+        showHome(false);
     }
 
-    private void buildScreen() {
-        LinearLayout page = new LinearLayout(this);
-        page.setOrientation(LinearLayout.VERTICAL);
-        page.setBackgroundColor(Color.rgb(245, 246, 250));
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) applyImmersiveMode();
+    }
 
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.VERTICAL);
-        header.setPadding(dp(22), dp(16), dp(22), dp(10));
+    private void applyImmersiveMode() {
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+    }
 
-        TextView brand = label("МАЛЕНЬКИЙ БАНК", 11, MUTED, true);
-        brand.setLetterSpacing(0.14f);
-        header.addView(brand);
-        TextView title = label("Мой кошелёк", 28, INK, true);
+    private void resetScreen(int newScreen) {
+        screen = newScreen;
+        root.removeAllViews();
+        root.setAlpha(1f);
+        root.setPadding(dp(22), dp(14), dp(22), dp(17));
+    }
+
+    private void showHome(boolean animate) {
+        resetScreen(HOME);
+
+        TextView brand = label("ТЕРМИНАЛ  •  DEMO", 12, ORANGE, true);
+        brand.setLetterSpacing(0.15f);
+        LinearLayout.LayoutParams brandParams = new LinearLayout.LayoutParams(-1, -2);
+        brandParams.topMargin = dp(25);
+        root.addView(brand, brandParams);
+
+        TextView title = label("Добро\nпожаловать", 40, WHITE, true);
+        title.setLineSpacing(dp(1), 1f);
         LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(-1, -2);
-        titleParams.topMargin = dp(5);
-        header.addView(title, titleParams);
+        titleParams.topMargin = dp(17);
+        root.addView(title, titleParams);
+
+        TextView subtitle = label("Выберите режим работы", 16, MUTED, false);
+        LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(-1, -2);
+        subtitleParams.topMargin = dp(8);
+        root.addView(subtitle, subtitleParams);
+
+        View spacer = new View(this);
+        root.addView(spacer, new LinearLayout.LayoutParams(1, 0, 1));
+        root.addView(modeCard("01", "Режим пользователя", "Баланс и управление средствами", "›", () -> {
+            addingFunds = true;
+            amountDigits = "";
+            showUser(true);
+        }));
+        root.addView(modeCard("02", "Режим продавца", "Ввод суммы и оплата", "›", () -> {
+            amountDigits = "";
+            showSellerEntry(true);
+        }));
+
+        TextView footnote = label("Учебный терминал · реальные платежи не проводятся", 11, MUTED, false);
+        footnote.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams footnoteParams = new LinearLayout.LayoutParams(-1, -2);
+        footnoteParams.topMargin = dp(22);
+        footnoteParams.bottomMargin = dp(8);
+        root.addView(footnote, footnoteParams);
+        if (animate) fadeIn();
+    }
+
+    private View modeCard(String number, String title, String description, String arrow, Runnable action) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(17), dp(19), dp(17), dp(19));
+        card.setBackground(rounded(SURFACE, 20));
+        card.setClickable(true);
+        card.setFocusable(true);
+
+        TextView badge = label(number, 13, ORANGE, true);
+        badge.setGravity(Gravity.CENTER);
+        badge.setBackground(rounded(Color.rgb(57, 39, 27), 12));
+        card.addView(badge, new LinearLayout.LayoutParams(dp(43), dp(43)));
+
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, -2, 1);
+        textParams.leftMargin = dp(14);
+        card.addView(texts, textParams);
+        texts.addView(label(title, 16, WHITE, true));
+        TextView desc = label(description, 12, MUTED, false);
+        LinearLayout.LayoutParams descParams = new LinearLayout.LayoutParams(-1, -2);
+        descParams.topMargin = dp(5);
+        texts.addView(desc, descParams);
+
+        TextView arrowView = label(arrow, 29, ORANGE, false);
+        arrowView.setGravity(Gravity.CENTER);
+        card.addView(arrowView, new LinearLayout.LayoutParams(dp(32), -2));
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.topMargin = dp(10);
+        card.setOnClickListener(v -> action.run());
+        card.setLayoutParams(params);
+        return card;
+    }
+
+    private void showUser(boolean animate) {
+        resetScreen(USER);
+        root.addView(topBar("РЕЖИМ ПОЛЬЗОВАТЕЛЯ", () -> showHome(true)));
 
         LinearLayout balanceCard = new LinearLayout(this);
         balanceCard.setOrientation(LinearLayout.VERTICAL);
-        balanceCard.setPadding(dp(21), dp(18), dp(21), dp(19));
-        balanceCard.setBackground(rounded(Color.rgb(39, 44, 82), dp(22)));
-        LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(-1, -2);
-        cardParams.topMargin = dp(17);
-        header.addView(balanceCard, cardParams);
-        TextView balanceCaption = label("ДОСТУПНЫЙ БАЛАНС", 11, Color.rgb(204, 205, 229), true);
-        balanceCaption.setLetterSpacing(0.08f);
-        balanceCard.addView(balanceCaption);
-        balanceValue = label("", 35, Color.WHITE, true);
-        LinearLayout.LayoutParams valueParams = new LinearLayout.LayoutParams(-1, -2);
-        valueParams.topMargin = dp(5);
-        balanceCard.addView(balanceValue, valueParams);
-        TextView demoLabel = label("Демо-кошелёк · реальные деньги не используются", 11, Color.rgb(204, 205, 229), false);
-        LinearLayout.LayoutParams demoParams = new LinearLayout.LayoutParams(-1, -2);
-        demoParams.topMargin = dp(4);
-        balanceCard.addView(demoLabel, demoParams);
+        balanceCard.setPadding(dp(18), dp(13), dp(18), dp(13));
+        balanceCard.setBackground(rounded(SURFACE, 17));
+        LinearLayout.LayoutParams balanceParams = new LinearLayout.LayoutParams(-1, -2);
+        balanceParams.topMargin = dp(12);
+        root.addView(balanceCard, balanceParams);
+        balanceCard.addView(label("ДОСТУПНЫЙ БАЛАНС", 10, MUTED, true));
+        balanceView = label(formatMoney(balance) + " ₽", 28, WHITE, true);
+        LinearLayout.LayoutParams balanceTextParams = new LinearLayout.LayoutParams(-1, -2);
+        balanceTextParams.topMargin = dp(3);
+        balanceCard.addView(balanceView, balanceTextParams);
 
-        LinearLayout tabs = new LinearLayout(this);
-        tabs.setOrientation(LinearLayout.HORIZONTAL);
-        tabs.setPadding(dp(5), dp(5), dp(5), dp(5));
-        tabs.setBackground(rounded(Color.rgb(233, 235, 243), dp(15)));
-        LinearLayout.LayoutParams tabsParams = new LinearLayout.LayoutParams(-1, dp(54));
-        tabsParams.topMargin = dp(17);
-        header.addView(tabs, tabsParams);
+        LinearLayout amountPanel = new LinearLayout(this);
+        amountPanel.setOrientation(LinearLayout.HORIZONTAL);
+        amountPanel.setGravity(Gravity.CENTER_VERTICAL);
+        amountPanel.setPadding(dp(16), dp(4), dp(16), dp(4));
+        amountPanel.setBackground(rounded(SURFACE, 15));
+        LinearLayout.LayoutParams amountPanelParams = new LinearLayout.LayoutParams(-1, dp(65));
+        amountPanelParams.topMargin = dp(12);
+        root.addView(amountPanel, amountPanelParams);
+        LinearLayout amountTexts = new LinearLayout(this);
+        amountTexts.setOrientation(LinearLayout.VERTICAL);
+        amountPanel.addView(amountTexts, new LinearLayout.LayoutParams(0, -2, 1));
+        amountTexts.addView(label("СУММА ОПЕРАЦИИ", 10, MUTED, true));
+        amountView = label("0 ₽", 24, WHITE, true);
+        amountView.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams amountValueParams = new LinearLayout.LayoutParams(-1, -2);
+        amountValueParams.topMargin = dp(2);
+        amountTexts.addView(amountView, amountValueParams);
+        TextView clear = label("⌫", 24, ORANGE, true);
+        clear.setGravity(Gravity.CENTER);
+        amountPanel.addView(clear, new LinearLayout.LayoutParams(dp(42), -1));
+        clear.setOnClickListener(v -> deleteDigit());
 
-        tabUser = new LinearLayout(this);
-        tabSeller = new LinearLayout(this);
-        userTabText = label("Мой баланс", 14, INK, true);
-        sellerTabText = label("Оплата", 14, MUTED, true);
-        setupTab(tabUser, userTabText);
-        setupTab(tabSeller, sellerTabText);
-        tabs.addView(tabUser, new LinearLayout.LayoutParams(0, -1, 1));
-        tabs.addView(tabSeller, new LinearLayout.LayoutParams(0, -1, 1));
-        tabUser.setOnClickListener(v -> showMode(0));
-        tabSeller.setOnClickListener(v -> showMode(1));
+        LinearLayout operations = new LinearLayout(this);
+        operations.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams operationsParams = new LinearLayout.LayoutParams(-1, dp(43));
+        operationsParams.topMargin = dp(10);
+        root.addView(operations, operationsParams);
+        operationAdd = operationChoice("＋  Пополнить", true);
+        operationSubtract = operationChoice("−  Списать", false);
+        operations.addView(operationAdd, new LinearLayout.LayoutParams(0, -1, 1));
+        LinearLayout.LayoutParams subtractParams = new LinearLayout.LayoutParams(0, -1, 1);
+        subtractParams.leftMargin = dp(9);
+        operations.addView(operationSubtract, subtractParams);
+        operationAdd.setOnClickListener(v -> setOperation(true));
+        operationSubtract.setOnClickListener(v -> setOperation(false));
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.setClipToPadding(false);
-        content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(22), dp(13), dp(22), dp(26));
-        scroll.addView(content);
-        page.addView(header, new LinearLayout.LayoutParams(-1, -2));
-        page.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        setContentView(page);
-        refreshBalance();
+        userNotice = label("Введи сумму на цифровой панели", 12, MUTED, false);
+        userNotice.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams noticeParams = new LinearLayout.LayoutParams(-1, dp(29));
+        noticeParams.topMargin = dp(4);
+        root.addView(userNotice, noticeParams);
+
+        root.addView(keypad(), new LinearLayout.LayoutParams(-1, 0, 1));
+        TextView action = actionButton("ПОДТВЕРДИТЬ ОПЕРАЦИЮ", ORANGE, WHITE);
+        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(-1, dp(56));
+        actionParams.topMargin = dp(10);
+        root.addView(action, actionParams);
+        action.setOnClickListener(v -> applyUserOperation());
+        if (animate) fadeIn();
     }
 
-    private void setupTab(LinearLayout tab, TextView text) {
-        tab.setGravity(Gravity.CENTER);
-        tab.addView(text);
-        tab.setBackground(rounded(Color.TRANSPARENT, dp(12)));
+    private void showSellerEntry(boolean animate) {
+        resetScreen(SELLER_ENTRY);
+        root.addView(topBar("РЕЖИМ ПРОДАВЦА", () -> showHome(true)));
+
+        TextView title = label("Сумма\nпокупки", 32, WHITE, true);
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(-1, -2);
+        titleParams.topMargin = dp(12);
+        root.addView(title, titleParams);
+
+        LinearLayout amountPanel = new LinearLayout(this);
+        amountPanel.setOrientation(LinearLayout.VERTICAL);
+        amountPanel.setGravity(Gravity.CENTER_VERTICAL);
+        amountPanel.setPadding(dp(17), dp(9), dp(17), dp(9));
+        amountPanel.setBackground(rounded(SURFACE, 16));
+        LinearLayout.LayoutParams amountParams = new LinearLayout.LayoutParams(-1, dp(78));
+        amountParams.topMargin = dp(12);
+        root.addView(amountPanel, amountParams);
+        amountPanel.addView(label("К ОПЛАТЕ", 10, MUTED, true));
+        amountView = label("0 ₽", 30, WHITE, true);
+        LinearLayout.LayoutParams amountTextParams = new LinearLayout.LayoutParams(-1, -2);
+        amountTextParams.topMargin = dp(2);
+        amountPanel.addView(amountView, amountTextParams);
+
+        root.addView(keypad(), new LinearLayout.LayoutParams(-1, 0, 1));
+        TextView start = actionButton("НАЧАТЬ ОПЛАТУ   →", ORANGE, WHITE);
+        LinearLayout.LayoutParams startParams = new LinearLayout.LayoutParams(-1, dp(58));
+        startParams.topMargin = dp(12);
+        root.addView(start, startParams);
+        start.setOnClickListener(v -> beginPayment());
+
+        TextView balanceHint = label("На балансе: " + formatMoney(balance) + " ₽", 12, MUTED, false);
+        balanceHint.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams hintParams = new LinearLayout.LayoutParams(-1, dp(27));
+        hintParams.topMargin = dp(4);
+        root.addView(balanceHint, hintParams);
+        if (animate) fadeIn();
     }
 
-    private void showMode(int mode) {
-        currentMode = mode;
-        boolean user = mode == 0;
-        tabUser.setBackground(rounded(user ? Color.WHITE : Color.TRANSPARENT, dp(12)));
-        tabSeller.setBackground(rounded(user ? Color.TRANSPARENT : Color.WHITE, dp(12)));
-        userTabText.setTextColor(user ? INK : MUTED);
-        sellerTabText.setTextColor(user ? MUTED : INK);
-        content.removeAllViews();
-        if (user) showUserMode(); else showSellerMode();
-    }
+    private void showPayment(boolean animate) {
+        resetScreen(PAYMENT);
+        root.addView(topBar("ОПЛАТА", () -> showSellerEntry(true)));
 
-    private void showUserMode() {
-        content.addView(label("Управление балансом", 20, INK, true));
-        addGap(content, 5);
-        content.addView(label("Добавляй учебные деньги или списывай их.", 14, MUTED, false));
+        TextView price = label(formatMoney(pendingPaymentAmount) + " ₽", 38, WHITE, true);
+        price.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams priceParams = new LinearLayout.LayoutParams(-1, -2);
+        priceParams.topMargin = dp(23);
+        root.addView(price, priceParams);
+        TextView caption = label("К ОПЛАТЕ", 11, MUTED, true);
+        caption.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams captionParams = new LinearLayout.LayoutParams(-1, -2);
+        captionParams.topMargin = dp(3);
+        root.addView(caption, captionParams);
 
-        LinearLayout card = panel();
-        addTop(content, card, 18);
-        card.addView(label("Сумма операции", 14, INK, true));
-        userAmount = amountInput("Например, 500");
-        addTop(card, userAmount, 11);
+        FrameLayout touchArea = new FrameLayout(this);
+        LinearLayout.LayoutParams areaParams = new LinearLayout.LayoutParams(-1, 0, 1);
+        areaParams.topMargin = dp(15);
+        areaParams.bottomMargin = dp(7);
+        root.addView(touchArea, areaParams);
 
-        LinearLayout buttons = new LinearLayout(this);
-        buttons.setOrientation(LinearLayout.HORIZONTAL);
-        addTop(card, buttons, 13);
-        Button add = actionButton("＋  Добавить", GREEN);
-        Button subtract = actionButton("−  Списать", Color.rgb(247, 238, 239));
-        subtract.setTextColor(RED);
-        buttons.addView(add, new LinearLayout.LayoutParams(0, dp(51), 1));
-        LinearLayout.LayoutParams subtractParams = new LinearLayout.LayoutParams(0, dp(51), 1);
-        subtractParams.leftMargin = dp(10);
-        buttons.addView(subtract, subtractParams);
-        add.setOnClickListener(v -> changeBalance(true));
-        subtract.setOnClickListener(v -> changeBalance(false));
+        FrameLayout circle = new FrameLayout(this);
+        FrameLayout.LayoutParams circleParams = new FrameLayout.LayoutParams(dp(204), dp(204), Gravity.CENTER);
+        touchArea.addView(circle, circleParams);
 
-        LinearLayout hint = panel();
-        addTop(content, hint, 14);
-        hint.setOrientation(LinearLayout.HORIZONTAL);
-        TextView icon = label("✦", 20, PURPLE, true);
-        hint.addView(icon, new LinearLayout.LayoutParams(dp(34), -2));
-        TextView text = label("Баланс сохраняется автоматически и доступен в режиме оплаты.", 13, MUTED, false);
-        hint.addView(text, new LinearLayout.LayoutParams(0, -2, 1));
-    }
+        View haloOuter = new View(this);
+        haloOuter.setBackground(circleBorder(Color.rgb(103, 60, 31), dp(102), dp(1)));
+        circle.addView(haloOuter, new FrameLayout.LayoutParams(-1, -1));
+        View haloInner = new View(this);
+        haloInner.setBackground(circleBorder(Color.rgb(150, 78, 30), dp(90), dp(1)));
+        FrameLayout.LayoutParams innerHaloParams = new FrameLayout.LayoutParams(dp(174), dp(174), Gravity.CENTER);
+        circle.addView(haloInner, innerHaloParams);
 
-    private void showSellerMode() {
-        content.addView(label("Режим продавца", 20, INK, true));
-        addGap(content, 5);
-        content.addView(label("Укажи сумму покупки и запусти оплату.", 14, MUTED, false));
+        TextView tapTarget = label("●", 54, ORANGE, true);
+        tapTarget.setGravity(Gravity.CENTER);
+        tapTarget.setBackground(circleFill(Color.rgb(51, 36, 27), dp(78)));
+        FrameLayout.LayoutParams targetParams = new FrameLayout.LayoutParams(dp(145), dp(145), Gravity.CENTER);
+        circle.addView(tapTarget, targetParams);
+        tapTarget.setOnClickListener(v -> processPayment(tapTarget));
+        circle.setOnClickListener(v -> processPayment(tapTarget));
+        startPulse(haloOuter, 1f, 1.12f, 1200);
+        startPulse(haloInner, 1f, 1.09f, 1000);
 
-        LinearLayout card = panel();
-        addTop(content, card, 18);
-        card.addView(label("Сумма покупки, ₽", 14, INK, true));
-        sellerAmount = amountInput("Например, 350");
-        addTop(card, sellerAmount, 11);
-        Button start = actionButton("Начать оплату   →", PURPLE);
-        addTop(card, start, 14);
-        start.setOnClickListener(v -> startPayment());
-
-        LinearLayout paymentCard = new LinearLayout(this);
-        paymentCard.setOrientation(LinearLayout.VERTICAL);
-        paymentCard.setGravity(Gravity.CENTER_HORIZONTAL);
-        paymentCard.setPadding(dp(20), dp(21), dp(20), dp(22));
-        paymentCard.setBackground(rounded(Color.WHITE, dp(21)));
-        addTop(content, paymentCard, 14);
-
-        TextView touchIcon = label("👆", 43, INK, false);
-        touchIcon.setGravity(Gravity.CENTER);
-        paymentCard.addView(touchIcon, new LinearLayout.LayoutParams(-1, dp(66)));
-        TextView instruction = label("Приложите палец на экран,\nчтобы оплатить", 17, INK, true);
+        TextView instruction = label("ПРИЛОЖИТЕ ПАЛЕЦ", 18, WHITE, true);
         instruction.setGravity(Gravity.CENTER);
-        addTop(paymentCard, instruction, 8);
-        TextView explanation = label("Коснитесь кнопки — это имитация оплаты", 12, MUTED, false);
-        explanation.setGravity(Gravity.CENTER);
-        addTop(paymentCard, explanation, 7);
-        Button pay = actionButton("Коснуться и оплатить", Color.rgb(235, 232, 255));
-        pay.setTextColor(PURPLE);
-        addTop(paymentCard, pay, 15);
-        pay.setOnClickListener(v -> processPayment());
-
-        resultMessage = label("Сначала укажи сумму и нажми «Начать оплату».", 13, MUTED, true);
-        resultMessage.setGravity(Gravity.CENTER);
-        addTop(paymentCard, resultMessage, 13);
+        root.addView(instruction, new LinearLayout.LayoutParams(-1, -2));
+        TextView subInstruction = label("Коснитесь круга для имитации оплаты", 12, MUTED, false);
+        subInstruction.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams subParams = new LinearLayout.LayoutParams(-1, -2);
+        subParams.topMargin = dp(7);
+        subParams.bottomMargin = dp(14);
+        root.addView(subInstruction, subParams);
+        if (animate) fadeIn();
     }
 
-    private void changeBalance(boolean adding) {
-        Long amount = readAmount(userAmount);
-        if (amount == null) return;
-        if (!adding && amount > balance) {
-            Toast.makeText(this, "Недостаточно средств", Toast.LENGTH_SHORT).show();
+    private void processPayment(View tapTarget) {
+        if (paymentAttempted) return;
+        paymentAttempted = true;
+        tapTarget.animate().scaleX(0.82f).scaleY(0.82f).alpha(0.7f).setDuration(120)
+                .withEndAction(() -> tapTarget.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(180).start()).start();
+        if (balance < pendingPaymentAmount) {
+            tapTarget.postDelayed(() -> showResult(false), 250);
             return;
         }
-        if (adding && Long.MAX_VALUE - balance < amount) {
-            Toast.makeText(this, "Сумма слишком большая", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        balance += adding ? amount : -amount;
-        saveBalance();
-        refreshBalance();
-        userAmount.setText("");
-        Toast.makeText(this, adding ? "Баланс пополнен" : "Сумма списана", Toast.LENGTH_SHORT).show();
-        hideKeyboard(userAmount);
-    }
-
-    private void startPayment() {
-        Long amount = readAmount(sellerAmount);
-        if (amount == null) return;
-        paymentFinished = false;
-        paymentStarted = true;
-        pendingPaymentAmount = amount;
-        resultMessage.setText("Сумма к оплате: " + formatMoney(amount) + " ₽. Коснитесь кнопки ниже.");
-        resultMessage.setTextColor(MUTED);
-        hideKeyboard(sellerAmount);
-    }
-
-    private void processPayment() {
-        if (paymentFinished) {
-            resultMessage.setText("Начни новую оплату, чтобы продолжить.");
-            return;
-        }
-        if (!paymentStarted) {
-            resultMessage.setText("Сначала укажи сумму и нажми «Начать оплату».");
-            resultMessage.setTextColor(RED);
-            return;
-        }
-        long amount = pendingPaymentAmount;
-        if (balance >= amount) {
-            balance -= amount;
+        tapTarget.setText("✓");
+        tapTarget.setTextSize(54);
+        tapTarget.setTextColor(GREEN);
+        tapTarget.setBackground(circleFill(Color.rgb(27, 56, 43), dp(78)));
+        tapTarget.postDelayed(() -> {
+            balance -= pendingPaymentAmount;
             saveBalance();
-            refreshBalance();
-            resultMessage.setText("✓  Успешно оплачено!\n− " + formatMoney(amount) + " ₽");
-            resultMessage.setTextColor(GREEN);
-            paymentFinished = true;
-            paymentStarted = false;
-        } else {
-            resultMessage.setText("Недостаточно средств");
-            resultMessage.setTextColor(RED);
-        }
+            showResult(true);
+        }, 360);
     }
 
-    private Long readAmount(EditText input) {
-        String value = input.getText().toString().trim().replace(" ", "");
-        if (value.isEmpty()) {
-            Toast.makeText(this, "Введи сумму в рублях", Toast.LENGTH_SHORT).show();
-            return null;
+    private void showResult(boolean success) {
+        resetScreen(RESULT);
+        root.addView(topBar(success ? "ПОКУПКА" : "ОПЛАТА", () -> showHome(true)));
+
+        FrameLayout resultArea = new FrameLayout(this);
+        root.addView(resultArea, new LinearLayout.LayoutParams(-1, 0, 1));
+        LinearLayout resultContent = new LinearLayout(this);
+        resultContent.setOrientation(LinearLayout.VERTICAL);
+        resultContent.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams contentParams = new FrameLayout.LayoutParams(-1, -1);
+        resultArea.addView(resultContent, contentParams);
+
+        TextView icon = label(success ? "✓" : "×", 68, success ? GREEN : RED, true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(circleFill(success ? Color.rgb(27, 56, 43) : Color.rgb(62, 32, 34), dp(72)));
+        resultContent.addView(icon, new LinearLayout.LayoutParams(dp(144), dp(144)));
+        icon.setScaleX(0.35f);
+        icon.setScaleY(0.35f);
+        icon.setAlpha(0f);
+        icon.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(420).setInterpolator(new android.view.animation.OvershootInterpolator()).start();
+
+        TextView message = label(success ? "Успешно оплачено!" : "Недостаточно средств", 25, success ? GREEN : RED, true);
+        message.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(-1, -2);
+        messageParams.topMargin = dp(24);
+        resultContent.addView(message, messageParams);
+
+        TextView details = label(success
+                ? "− " + formatMoney(pendingPaymentAmount) + " ₽\nНовый баланс: " + formatMoney(balance) + " ₽"
+                : "Сумма покупки: " + formatMoney(pendingPaymentAmount) + " ₽\nНа балансе: " + formatMoney(balance) + " ₽",
+                15, MUTED, false);
+        details.setGravity(Gravity.CENTER);
+        details.setLineSpacing(dp(5), 1f);
+        LinearLayout.LayoutParams detailsParams = new LinearLayout.LayoutParams(-1, -2);
+        detailsParams.topMargin = dp(12);
+        resultContent.addView(details, detailsParams);
+
+        if (success) {
+            ConfettiView confetti = new ConfettiView(this);
+            resultArea.addView(confetti, new FrameLayout.LayoutParams(-1, -1));
+            confetti.start();
         }
-        try {
-            long amount = Long.parseLong(value);
-            if (amount <= 0) {
-                Toast.makeText(this, "Сумма должна быть больше нуля", Toast.LENGTH_SHORT).show();
-                return null;
+
+        TextView again = actionButton(success ? "НОВАЯ ПОКУПКА" : "ИЗМЕНИТЬ СУММУ", ORANGE, WHITE);
+        LinearLayout.LayoutParams againParams = new LinearLayout.LayoutParams(-1, dp(57));
+        againParams.bottomMargin = dp(10);
+        root.addView(again, againParams);
+        again.setOnClickListener(v -> {
+            paymentAttempted = false;
+            amountDigits = "";
+            showSellerEntry(true);
+        });
+
+        TextView home = label("НА ГЛАВНЫЙ ЭКРАН", 13, MUTED, true);
+        home.setGravity(Gravity.CENTER);
+        root.addView(home, new LinearLayout.LayoutParams(-1, dp(42)));
+        home.setOnClickListener(v -> {
+            paymentAttempted = false;
+            showHome(true);
+        });
+        if (success) icon.postDelayed(() -> icon.animate().rotation(360f).setDuration(600).start(), 250);
+    }
+
+    private LinearLayout topBar(String title, Runnable backAction) {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        TextView back = label("‹", 34, ORANGE, false);
+        back.setGravity(Gravity.CENTER);
+        back.setBackground(rounded(SURFACE, 14));
+        bar.addView(back, new LinearLayout.LayoutParams(dp(45), dp(43)));
+        back.setOnClickListener(v -> backAction.run());
+        TextView heading = label(title, 12, MUTED, true);
+        heading.setLetterSpacing(0.11f);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams headingParams = new LinearLayout.LayoutParams(0, -1, 1);
+        headingParams.leftMargin = dp(12);
+        bar.addView(heading, headingParams);
+        return bar;
+    }
+
+    private LinearLayout keypad() {
+        LinearLayout pad = new LinearLayout(this);
+        pad.setOrientation(LinearLayout.VERTICAL);
+        pad.setPadding(0, dp(5), 0, dp(3));
+        String[][] digits = {{"1", "2", "3"}, {"4", "5", "6"}, {"7", "8", "9"}, {"C", "0", "⌫"}};
+        for (String[] rowDigits : digits) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, 0, 1);
+            rowParams.topMargin = dp(4);
+            rowParams.bottomMargin = dp(4);
+            pad.addView(row, rowParams);
+            for (int i = 0; i < rowDigits.length; i++) {
+                String digit = rowDigits[i];
+                TextView key = label(digit, digit.length() > 1 ? 21 : 24,
+                        (digit.equals("⌫") || digit.equals("C")) ? ORANGE : WHITE, true);
+                key.setGravity(Gravity.CENTER);
+                key.setBackground(rounded(SURFACE, 15));
+                key.setClickable(true);
+                key.setFocusable(true);
+                LinearLayout.LayoutParams keyParams = new LinearLayout.LayoutParams(0, -1, 1);
+                if (i > 0) keyParams.leftMargin = dp(9);
+                row.addView(key, keyParams);
+                key.setOnClickListener(v -> {
+                    if (digit.equals("⌫")) deleteDigit();
+                    else if (digit.equals("C")) {
+                        amountDigits = "";
+                        updateAmountView();
+                    } else enterDigit(digit);
+                });
             }
-            return amount;
-        } catch (NumberFormatException e) {
-            Toast.makeText(this, "Проверь сумму", Toast.LENGTH_SHORT).show();
-            return null;
         }
+        return pad;
     }
 
-    private void refreshBalance() {
-        if (balanceValue != null) balanceValue.setText(formatMoney(balance) + " ₽");
+    private TextView operationChoice(String text, boolean selected) {
+        TextView choice = label(text, 13, selected ? BG : MUTED, true);
+        choice.setGravity(Gravity.CENTER);
+        choice.setBackground(rounded(selected ? ORANGE : SURFACE, 13));
+        return choice;
+    }
+
+    private void setOperation(boolean add) {
+        addingFunds = add;
+        operationAdd.setTextColor(add ? BG : MUTED);
+        operationAdd.setBackground(rounded(add ? ORANGE : SURFACE, 13));
+        operationSubtract.setTextColor(add ? MUTED : BG);
+        operationSubtract.setBackground(rounded(add ? SURFACE : ORANGE, 13));
+        userNotice.setText("Введи сумму на цифровой панели");
+        userNotice.setTextColor(MUTED);
+    }
+
+    private void enterDigit(String digit) {
+        if (amountDigits.length() >= 12) return;
+        if (amountDigits.equals("0")) amountDigits = digit;
+        else amountDigits += digit;
+        updateAmountView();
+    }
+
+    private void deleteDigit() {
+        if (!amountDigits.isEmpty()) amountDigits = amountDigits.substring(0, amountDigits.length() - 1);
+        updateAmountView();
+    }
+
+    private void updateAmountView() {
+        if (amountView == null) return;
+        String display = amountDigits.isEmpty() ? "0" : amountDigits;
+        amountView.setText(formatMoney(Long.parseLong(display)) + " ₽");
+    }
+
+    private void applyUserOperation() {
+        long amount = amountDigits.isEmpty() ? 0 : Long.parseLong(amountDigits);
+        if (amount <= 0) {
+            userNotice.setText("Сначала введи сумму");
+            userNotice.setTextColor(ORANGE);
+            return;
+        }
+        if (addingFunds) {
+            if (Long.MAX_VALUE - balance < amount) {
+                userNotice.setText("Сумма слишком большая");
+                userNotice.setTextColor(RED);
+                return;
+            }
+            balance += amount;
+            userNotice.setText("Баланс успешно пополнен  ✓");
+            userNotice.setTextColor(GREEN);
+        } else {
+            if (amount > balance) {
+                userNotice.setText("Недостаточно средств");
+                userNotice.setTextColor(RED);
+                return;
+            }
+            balance -= amount;
+            userNotice.setText("Сумма успешно списана  ✓");
+            userNotice.setTextColor(GREEN);
+        }
+        saveBalance();
+        balanceView.setText(formatMoney(balance) + " ₽");
+        amountDigits = "";
+        updateAmountView();
+    }
+
+    private void beginPayment() {
+        long amount = amountDigits.isEmpty() ? 0 : Long.parseLong(amountDigits);
+        if (amount <= 0) {
+            amountView.setTextColor(ORANGE);
+            amountView.animate().scaleX(1.06f).scaleY(1.06f).setDuration(110)
+                    .withEndAction(() -> amountView.animate().scaleX(1f).scaleY(1f).setDuration(110).start()).start();
+            return;
+        }
+        pendingPaymentAmount = amount;
+        paymentAttempted = false;
+        showPayment(true);
     }
 
     private void saveBalance() {
@@ -299,38 +556,14 @@ public class MainActivity extends Activity {
         return NumberFormat.getIntegerInstance(new Locale("ru", "RU")).format(value);
     }
 
-    private EditText amountInput(String hint) {
-        EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setTextSize(16);
-        input.setTextColor(INK);
-        input.setHintTextColor(MUTED);
-        input.setHint(hint);
-        input.setInputType(InputType.TYPE_CLASS_NUMBER);
-        input.setPadding(dp(15), 0, dp(15), 0);
-        input.setBackground(rounded(Color.rgb(245, 246, 250), dp(13)));
-        input.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(53)));
-        return input;
-    }
-
-    private Button actionButton(String text, int color) {
-        Button button = new Button(this);
-        button.setText(text);
-        button.setTextSize(14);
-        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        button.setTextColor(Color.WHITE);
-        button.setAllCaps(false);
-        button.setPadding(dp(8), 0, dp(8), 0);
-        button.setBackground(rounded(color, dp(14)));
+    private TextView actionButton(String text, int backgroundColor, int textColor) {
+        TextView button = label(text, 14, textColor, true);
+        button.setGravity(Gravity.CENTER);
+        button.setLetterSpacing(0.045f);
+        button.setBackground(rounded(backgroundColor, 16));
+        button.setClickable(true);
+        button.setFocusable(true);
         return button;
-    }
-
-    private LinearLayout panel() {
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(dp(17), dp(17), dp(17), dp(17));
-        layout.setBackground(rounded(Color.WHITE, dp(19)));
-        return layout;
     }
 
     private TextView label(String text, int size, int color, boolean bold) {
@@ -342,31 +575,116 @@ public class MainActivity extends Activity {
         return view;
     }
 
-    private GradientDrawable rounded(int color, int radius) {
+    private GradientDrawable rounded(int color, int radiusDp) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
-        drawable.setCornerRadius(radius);
+        drawable.setCornerRadius(dp(radiusDp));
         return drawable;
     }
 
-    private void addTop(LinearLayout parent, View child, int margin) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
-        params.topMargin = dp(margin);
-        parent.addView(child, params);
+    private GradientDrawable circleFill(int color, int radiusDp) {
+        GradientDrawable drawable = rounded(color, radiusDp);
+        drawable.setShape(GradientDrawable.OVAL);
+        return drawable;
     }
 
-    private void addGap(LinearLayout parent, int height) {
-        View gap = new View(this);
-        parent.addView(gap, new LinearLayout.LayoutParams(1, dp(height)));
+    private GradientDrawable circleBorder(int color, int radiusDp, int strokeDp) {
+        GradientDrawable drawable = circleFill(Color.TRANSPARENT, radiusDp);
+        drawable.setStroke(dp(strokeDp), color);
+        return drawable;
+    }
+
+    private void startPulse(View view, float from, float to, long duration) {
+        view.setScaleX(from);
+        view.setScaleY(from);
+        view.setAlpha(0.65f);
+        view.animate().scaleX(to).scaleY(to).alpha(0.05f).setDuration(duration)
+                .withEndAction(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (screen != PAYMENT) return;
+                        view.setScaleX(from);
+                        view.setScaleY(from);
+                        view.setAlpha(0.65f);
+                        startPulse(view, from, to, duration);
+                    }
+                }).start();
+    }
+
+    private void fadeIn() {
+        root.setAlpha(0f);
+        root.animate().alpha(1f).setDuration(220).start();
     }
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
-    private void hideKeyboard(View view) {
-        InputMethodManager manager = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-        if (manager != null) manager.hideSoftInputFromWindow(view.getWindowToken(), 0);
-        view.clearFocus();
+    @Override
+    public void onBackPressed() {
+        if (screen == HOME) {
+            super.onBackPressed();
+        } else if (screen == PAYMENT) {
+            paymentAttempted = false;
+            showSellerEntry(true);
+        } else {
+            paymentAttempted = false;
+            showHome(true);
+        }
+    }
+
+    private final class ConfettiView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Random random = new Random(17);
+        private final float[] angles = new float[42];
+        private final float[] distances = new float[42];
+        private final int[] colors = {ORANGE, GREEN, Color.WHITE, Color.rgb(255, 195, 84)};
+        private float progress;
+
+        ConfettiView(Activity context) {
+            super(context);
+            setClickable(false);
+            for (int i = 0; i < angles.length; i++) {
+                angles[i] = (float) (random.nextFloat() * Math.PI * 2);
+                distances[i] = dp(70) + random.nextFloat() * dp(190);
+            }
+        }
+
+        void start() {
+            ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+            animator.setDuration(1050);
+            animator.addUpdateListener(valueAnimator -> {
+                progress = (float) valueAnimator.getAnimatedValue();
+                invalidate();
+            });
+            animator.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    setVisibility(INVISIBLE);
+                }
+            });
+            animator.start();
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float centerX = getWidth() / 2f;
+            float centerY = getHeight() / 2f;
+            paint.setStyle(Paint.Style.FILL);
+            paint.setAlpha(Math.max(0, 255 - (int) (progress * 230)));
+            for (int i = 0; i < angles.length; i++) {
+                paint.setColor(colors[i % colors.length]);
+                float distance = distances[i] * progress;
+                float x = centerX + (float) Math.cos(angles[i]) * distance;
+                float y = centerY + (float) Math.sin(angles[i]) * distance + dp(70) * progress * progress;
+                float size = dp(3) + (i % 3) * dp(1);
+                canvas.save();
+                canvas.rotate(progress * 520 + i * 31, x, y);
+                canvas.drawRoundRect(x - size, y - size / 2, x + size, y + size / 2,
+                        size / 3, size / 3, paint);
+                canvas.restore();
+            }
+        }
     }
 }
